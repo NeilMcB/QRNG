@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
 
-python alice.py &
-python bob.py &
-python eve.py &
+python alice.py $1 &
+python bob.py $1 &
+python eve.py $1 &
