@@ -47,7 +47,8 @@ class ThreadManager:
                                    args=(self.n_qubits,
                                          self.bob_results,))
         self.eve_thread   = Thread(target=eve  , 
-                                   args=(self.n_qubits,))
+                                   args=(self.n_qubits,
+                                         True,))
 
         self.alice_thread.start()
         self.bob_thread  .start()
@@ -182,10 +183,15 @@ def bob(n_qubits_to_recieve, results):
 ##########################################################################
 
 ##########################################################################
-def eve(n_qubits_to_recieve):
+def eve(n_qubits_to_recieve, eavesdrop=False):
     """
-    Eve receives a qubit from Alice and passes it on to Bob without 
-    peeking (thanks, Eve).
+    Eve receives a qubit from Alice and passes it on to Bob. Eve can be
+    set to eavesdrop (i.e. measure at random then send her resulting 
+    state to Bob) or not.
+
+    Arguments:
+    n_qubits_to_recieve -- the number of qubits Eve is to expect
+    easvedrop -- whether or not Eve will look at each state she recieve
     """
 
     # connect to network
@@ -195,6 +201,20 @@ def eve(n_qubits_to_recieve):
         for _ in range(n_qubits_to_recieve):
             # recieve qubit from Alice
             q = Eve.recvQubit()
+
+            if eavesdrop:
+                # try to observe what Alice sent
+                basis = binomial(1, 0.5)  # computational or Hadamard basis
+                if basis:
+                    q.H()
+                result = q.measure()
+
+                # pass on result to Bob
+                q = qubit(Eve)
+                if result:
+                    q.X()  # |1>
+                if basis:
+                    q.H()  # |+> or |->
 
             # send qubit to Bob
             Eve.sendQubit(q, "Bob")
