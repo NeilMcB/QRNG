@@ -37,7 +37,7 @@ class ThreadManager:
 
         logging.info("NETWORK: Turning noisy-qubits %s.", 
                     ["off","on"][noisy])
-        #os.system("simulaqron set noisy-qubits %s"%["n","o"][noisy])
+        self.orig_noise_state = simulaqron_settings.noisy_qubits
         simulaqron_settings.noisy_qubits = noisy
 
         self.network = initNetwork()
@@ -83,7 +83,7 @@ class ThreadManager:
 
         # tidy up SimulaQron backend
         self.network.stop()
-        simulaqron_settings.noisy_qubits = False
+        simulaqron_settings.noisy_qubits = self.orig_noise_state
         #os.system("simulaqron set noisy-qubits n")
 
         results = (self.alice_results, self.bob_results)
