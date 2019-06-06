@@ -7,4 +7,4 @@ Usage:
 
 	OR
 
-	python BB84_QKD.py n -- does all of the above in one go (can be unreliable, if timeout error appears just run again - to be fixed)
+	python BB84_QKD.py n -- does all of the above in one go (can be unreliable, if timeout error appears just run again - to be fixed), and generates key and associated QBER estimate.
