@@ -1,25 +1,27 @@
+import argparse
 from cqc.pythonLib import CQCConnection, CQCNoQubitError, qubit
 import logging
-from threading import Thread
-import sys
 import numpy as np
 from numpy.random import binomial
+import sys
 from simulaqron.network import Network
+from threading import Thread
 
 FORMAT = "%(levelname)s: %(message)s"
 STATES = [["|0>", "|1>"], ["|+>", "|->"]]
+NETWORK_NAME = "BB84_QKD"
 
-##########################################################################
+###############################################################################
 class ThreadManager:
     """
-    Class to manage running of Alice, Bob and Eve's threads, and storing
-    of the corresponding results.
+    Class to manage running of Alice, Bob and Eve's threads, and storing of the 
+    corresponding results.
     """
 
     def __init__(self, n_qubits):
         """
-        Create new ThreadManager for n qubit BB84. Create empty arrays for
-        storing bases and measurements, initialising to -1 as this is an
+        Create new ThreadManager for n qubit BB84. Create empty arrays for 
+        storing bases and measurements, initialising to -1 as this is an 
         impossible value for either to be. Initialise network for running
         the protocol on.
 
@@ -34,9 +36,12 @@ class ThreadManager:
         self.network = initNetwork()
 
     
-    def start(self):
+    def start(self, eavesdrop):
         """
         Start Alice, Bob and Eve's threads.
+
+        Arguments:
+        eavesdrop -- if true, Eve will peek at every qubit which passes through
         """
         logging.info("TM     : Starting threads.")
 
@@ -48,7 +53,7 @@ class ThreadManager:
                                          self.bob_results,))
         self.eve_thread   = Thread(target=eve  , 
                                    args=(self.n_qubits,
-                                         True,))
+                                         eavesdrop,))
 
         self.alice_thread.start()
         self.bob_thread  .start()
@@ -57,8 +62,8 @@ class ThreadManager:
     
     def join(self):
         """
-        Join (i.e. wait for) Alice, Bob and Eve's threads. Stop the 
-        network as we no longer need it.
+        Join (i.e. wait for) Alice, Bob and Eve's threads. Stop the  network as
+        we no longer need it.
 
         Returns:
         results -- (np.ndarray, np.ndarray), Alice's and Bob's bases and
@@ -74,12 +79,12 @@ class ThreadManager:
         results = (self.alice_results, self.bob_results)
         return results
 
-##########################################################################
+###############################################################################
 
-##########################################################################
-def initNetwork(nodes=["Alice","Bob","Eve"], topology=None):
+###############################################################################
+def initNetwork(name=NETWORK_NAME, nodes=["Alice","Bob","Eve"], topology=None):
     """
-    Start simulaqron network with default name.
+    Start fully connected (the default) simulaqron network.
 
     Arguments:
     nodes -- list of nodes, identified by a string (name)
@@ -89,23 +94,23 @@ def initNetwork(nodes=["Alice","Bob","Eve"], topology=None):
     network -- pointer to initialised network
     """
     logging.info("NETWORK: Initialising network.")
-    network = Network(nodes=nodes, topology=topology)
+    network = Network(name=name, nodes=nodes, topology=topology, force=True)
     network.start()
     logging.info("NETWORK: Network started.")
 
     return network
 
-##########################################################################
+###############################################################################
 
-##########################################################################
+###############################################################################
 def alice(n_qubits_to_send, results):
     """
-    Alice chooses n random pairs of bits (x, a), using the first to 
-    determine a measurement basis (computational or Hadamard) and the 
-    second to determine the corresponding qubit orientation (|+> or |0>, 
-    |-> or |1> respectively). She sends these qubits to Bob via Eve 
-    through an untrusted quantum channel, and directly communicates her 
-    determined bases to Bob via a trusted classical channel.
+    Alice chooses n random pairs of bits (x, a), using the first to determine a
+    measurement basis (computational or Hadamard) and the second to determine 
+    the corresponding qubit orientation (|+> or |0>, |-> or |1> respectively).
+    She sends these qubits to Bob via Eve through an untrusted quantum channel,
+    and directly communicates her determined bases to Bob via a trusted
+    classical channel.
 
     Arguments:
     n_qubits_to_send -- the number of qubits to prepare and send to Bob
@@ -113,8 +118,8 @@ def alice(n_qubits_to_send, results):
     """
 
     # Connect to network
-    with CQCConnection("Alice") as Alice:
-        logging.info("ALICE  : Alice Connceted.")
+    with CQCConnection("Alice", network_name=NETWORK_NAME) as Alice:
+        logging.info("ALICE  : Alice connceted.")
 
         n_qubits_sent = 0
         while n_qubits_sent < n_qubits_to_send:
@@ -128,7 +133,6 @@ def alice(n_qubits_to_send, results):
             # try to make a qubit
             try:
                 q = qubit(Alice)  # |0>
-                n_qubits_sent += 1
             except CQCNoQubitError:
                 continue
             # if successful, encode accordingly
@@ -141,23 +145,27 @@ def alice(n_qubits_to_send, results):
             Alice.sendClassical("Bob", x)
             
             logging.debug("ALICE  : state %s sent", STATES[x][a])
+            if n_qubits_sent % (n_qubits_to_send // 10) == 0:
+                logging.info("ALICE  : %d of %d sent.", 
+                             n_qubits_sent+1, n_qubits_to_send)
 
-##########################################################################
+            n_qubits_sent += 1
 
-##########################################################################
+###############################################################################
+
+###############################################################################
 def bob(n_qubits_to_recieve, results):
     """
-    Bob chooses a random bit y to determine a measurement basis 
-    (computational or Hadamard) and uses this to measure the Qubit sent by
-    Alice. If his bit matches the bit classically send by Alice, in the
-    absence of any eveasdropping (which is the current scenario), he and
-    Alice will share the same secret(ish) bit.
+    Bob chooses a random bit y to determine a measurement basis (computational 
+    or Hadamard) and uses this to measure the Qubit sent by Alice. If his bit 
+    matches the bit classically send by Alice, in the absence of any 
+    eveasdropping, he and Alice will share the same secret(ish) bit.
     """
 
     # Connect to network
-    with CQCConnection("Bob") as Bob:
+    with CQCConnection("Bob", network_name=NETWORK_NAME) as Bob:
         logging.info("BOB    : Bob connected.")
-        for i in range(0,n_qubits_to_recieve):
+        for n_qubits_recieved in range(0,n_qubits_to_recieve):
             # random bit
             y = binomial(1, 0.5)  # 0 -> computational, 1 -> Hadamard
 
@@ -173,21 +181,23 @@ def bob(n_qubits_to_recieve, results):
             x = Bob.recvClassical()[0]
 
             # store for QBER estimation
-            results[0,i] = y       # basis
-            results[1,i] = b       # result
-            results[2,i] = (y==x)  # basis match
+            results[0,n_qubits_recieved] = y       # basis
+            results[1,n_qubits_recieved] = b       # result
+            results[2,n_qubits_recieved] = (y==x)  # basis match
 
-            # debug
             logging.debug("BOB    : state %s measured", STATES[y][b])
+            if n_qubits_recieved % (n_qubits_to_recieve // 10) == 0:
+                logging.info("BOB    : %d of %d recieved.", 
+                             n_qubits_recieved+1, n_qubits_to_recieve)
         
-##########################################################################
+###############################################################################
 
-##########################################################################
+###############################################################################
 def eve(n_qubits_to_recieve, eavesdrop=False):
     """
-    Eve receives a qubit from Alice and passes it on to Bob. Eve can be
-    set to eavesdrop (i.e. measure at random then send her resulting 
-    state to Bob) or not.
+    Eve receives a qubit from Alice and passes it on to Bob. Eve can be set to 
+    eavesdrop (i.e. measure at random then send her resulting state to Bob) or 
+    not.
 
     Arguments:
     n_qubits_to_recieve -- the number of qubits Eve is to expect
@@ -195,7 +205,7 @@ def eve(n_qubits_to_recieve, eavesdrop=False):
     """
 
     # connect to network
-    with CQCConnection("Eve") as Eve:
+    with CQCConnection("Eve", network_name=NETWORK_NAME) as Eve:
         logging.info("EVE    : Eve connected.")
 
         for _ in range(n_qubits_to_recieve):
@@ -209,6 +219,7 @@ def eve(n_qubits_to_recieve, eavesdrop=False):
                     q.H()
                 result = q.measure()
 
+                logging.debug("EVE    : state %s measured", STATES[basis][result])
                 # pass on result to Bob
                 q = qubit(Eve)
                 if result:
@@ -219,21 +230,20 @@ def eve(n_qubits_to_recieve, eavesdrop=False):
             # send qubit to Bob
             Eve.sendQubit(q, "Bob")
 
-##########################################################################
+###############################################################################
 
-##########################################################################
+###############################################################################
 def generateKey(alice_results, bob_results, test_prob=None):
     """
     Generate the key from the results of Alice and Bob; namely where their
     bases agree return the corresponding qubits/measurements.
 
     Arguments:
-    alice_results -- np.ndarray of Alice's randomly chosen bases and 
-    qubits
-    bob_results -- np.ndarray of Bob's randomly chosen bases and 
-    corresponding measurements
-    test_frac -- fraction of measurements to randomly select for 
-    estimating QBER, the ``true'' QBER will be returned if not specified
+    alice_results -- np.ndarray of Alice's randomly chosen bases and qubits
+    bob_results -- np.ndarray of Bob's randomly chosen bases and corresponding
+    measurements
+    test_frac -- fraction of measurements to randomly select for estimating 
+    QBER, the ``true'' QBER will be returned if not specified
 
     Returns:
     key -- the key generated by the BB84 protocol
@@ -254,19 +264,19 @@ def generateKey(alice_results, bob_results, test_prob=None):
 
     return (alice_key, bob_key, qber)
 
-##########################################################################
+###############################################################################
 
-##########################################################################
+###############################################################################
 def estimateQBER(alice_key_sample, bob_key_sample):
     """
-    Given equal sized samples of the keys generated for Alice and Bob, 
-    estimate the QBER of the system.
+    Given equal sized samples of the keys generated for Alice and Bob, estimate
+    the QBER of the system.
 
     Arguments:
-    alice_key_sample -- np.ndarray sampling Alice's key, drawn from 
-    randomly chosen indices
-    bob_key_sample -- np.ndarray sampling Bob's key, drawn from the same
-    random indices
+    alice_key_sample -- np.ndarray sampling Alice's key, drawn from randomly 
+    chosen indices
+    bob_key_sample -- np.ndarray sampling Bob's key, drawn from the same random
+    indices
 
     Returns:
     qber -- the estimated QBER
@@ -278,24 +288,43 @@ def estimateQBER(alice_key_sample, bob_key_sample):
     n_total = len(alice_key_sample)
     return n_in_agreement / n_total
 
-##########################################################################
+###############################################################################
 
-
-if __name__ == "__main__":
+###############################################################################
+def main(args):
     logging.basicConfig(format=FORMAT, level=logging.INFO)
 
-    n_qubits = int(sys.argv[1])
+    # process system args
+    n_qubits  = int(args.n_qubits)
+    eavesdrop = args.eavesdrop
+    if args.test_prob is not None:
+        test_prob = float(args.test_prob)
+    else:
+        test_prob = args.test_prob
 
     thread_manager = ThreadManager(n_qubits)
-    thread_manager.start()
-    alice_results, bob_results = thread_manager.join()
+    thread_manager.start(eavesdrop)
+    alice_res, bob_res = thread_manager.join()
 
-    alice_key, bob_key, qber = generateKey(alice_results, bob_results, test_prob=0.3)
+    alice_key, bob_key, qber = generateKey(alice_res, bob_res, test_prob)
     logging.info("MAIN   : Alice's generated key: %s", alice_key)
     logging.info("MAIN   :   Bob's generated key: %s",   bob_key)
     logging.info("MAIN   : QBER estimate: %.3f", qber)
-    
-    
 
+###############################################################################
     
-    
+###############################################################################
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="n-qubit BB84 QKD simulation")
+    parser.add_argument("n_qubits",          default=None, 
+                        help="Number of qubits to simulate in protocol")
+    parser.add_argument("--eavesdrop", "-e", action="store_true", 
+                        help=("If flagged, Eve will measure before re-sending " 
+                              "each qubit she recieves"))
+    parser.add_argument("--test_prob", "-f", default=None, 
+                        help=("Probability with which Alice and Bob consider "
+                              "using each of their qubits to estimate QBER"))
+    args = parser.parse_args()
+    main(args)
+
+###############################################################################
