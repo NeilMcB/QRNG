@@ -3,8 +3,10 @@ from cqc.pythonLib import CQCConnection, CQCNoQubitError, qubit
 import logging
 import numpy as np
 from numpy.random import binomial
+import os
 import sys
 from simulaqron.network import Network
+from simulaqron.settings import simulaqron_settings
 from threading import Thread
 
 FORMAT = "%(levelname)s: %(message)s"
@@ -18,7 +20,7 @@ class ThreadManager:
     corresponding results.
     """
 
-    def __init__(self, n_qubits):
+    def __init__(self, n_qubits, noisy):
         """
         Create new ThreadManager for n qubit BB84. Create empty arrays for 
         storing bases and measurements, initialising to -1 as this is an 
@@ -32,7 +34,12 @@ class ThreadManager:
         
         self.alice_results = -1*np.ones((2, n_qubits))
         self.bob_results   = -1*np.ones((3, n_qubits))
-        
+
+        logging.info("NETWORK: Turning noisy-qubits %s.", 
+                    ["off","on"][noisy])
+        #os.system("simulaqron set noisy-qubits %s"%["n","o"][noisy])
+        simulaqron_settings.noisy_qubits = noisy
+
         self.network = initNetwork()
 
     
@@ -74,7 +81,10 @@ class ThreadManager:
         self.eve_thread  .join()
         logging.info("TM     : Threads joined.")
 
+        # tidy up SimulaQron backend
         self.network.stop()
+        simulaqron_settings.noisy_qubits = False
+        #os.system("simulaqron set noisy-qubits n")
 
         results = (self.alice_results, self.bob_results)
         return results
@@ -147,7 +157,7 @@ def alice(n_qubits_to_send, results):
             logging.debug("ALICE  : state %s sent", STATES[x][a])
             if n_qubits_sent % (n_qubits_to_send // 10) == 0:
                 logging.info("ALICE  : %d of %d sent.", 
-                             n_qubits_sent+1, n_qubits_to_send)
+                             n_qubits_sent, n_qubits_to_send)
 
             n_qubits_sent += 1
 
@@ -188,7 +198,7 @@ def bob(n_qubits_to_recieve, results):
             logging.debug("BOB    : state %s measured", STATES[y][b])
             if n_qubits_recieved % (n_qubits_to_recieve // 10) == 0:
                 logging.info("BOB    : %d of %d recieved.", 
-                             n_qubits_recieved+1, n_qubits_to_recieve)
+                             n_qubits_recieved, n_qubits_to_recieve)
         
 ###############################################################################
 
@@ -297,12 +307,13 @@ def main(args):
     # process system args
     n_qubits  = int(args.n_qubits)
     eavesdrop = args.eavesdrop
+    noisy     = args.noisy
     if args.test_prob is not None:
         test_prob = float(args.test_prob)
     else:
         test_prob = args.test_prob
 
-    thread_manager = ThreadManager(n_qubits)
+    thread_manager = ThreadManager(n_qubits, noisy)
     thread_manager.start(eavesdrop)
     alice_res, bob_res = thread_manager.join()
 
@@ -321,6 +332,9 @@ if __name__ == "__main__":
     parser.add_argument("--eavesdrop", "-e", action="store_true", 
                         help=("If flagged, Eve will measure before re-sending " 
                               "each qubit she recieves"))
+    parser.add_argument("--noisy"    , "-n", action="store_true", 
+                        help=("If flagged, the SimulaQron setting for noisy " 
+                              "qubits will be turned on"))
     parser.add_argument("--test_prob", "-f", default=None, 
                         help=("Probability with which Alice and Bob consider "
                               "using each of their qubits to estimate QBER"))
