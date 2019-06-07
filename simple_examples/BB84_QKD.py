@@ -4,7 +4,7 @@ import logging
 import numpy as np
 from numpy.random import binomial
 import os
-import sys
+import time
 from simulaqron.network import Network
 from simulaqron.settings import simulaqron_settings
 from threading import Thread
@@ -55,6 +55,7 @@ class ThreadManager:
         self.alice_thread = Thread(target=alice, 
                                    args=(self.n_qubits, 
                                          self.alice_results,))
+        time.sleep(1)  # allow Alice to establish classical connection to Bob
         self.bob_thread   = Thread(target=bob  , 
                                    args=(self.n_qubits,
                                          self.bob_results,))
@@ -155,10 +156,13 @@ def alice(n_qubits_to_send, results):
             Alice.sendClassical("Bob", x)
             
             logging.debug("ALICE  : state %s sent", STATES[x][a])
-            if n_qubits_sent % (n_qubits_to_send // 10) == 0:
+
+            if n_qubits_to_send < 10:
                 logging.info("ALICE  : %d of %d sent.", 
                              n_qubits_sent, n_qubits_to_send)
-
+            elif n_qubits_sent % (n_qubits_to_send // 10) == 0:
+                logging.info("ALICE  : %d of %d sent.", 
+                             n_qubits_sent, n_qubits_to_send)
             n_qubits_sent += 1
 
 ###############################################################################
@@ -196,8 +200,12 @@ def bob(n_qubits_to_recieve, results):
             results[2,n_qubits_recieved] = (y==x)  # basis match
 
             logging.debug("BOB    : state %s measured", STATES[y][b])
-            if n_qubits_recieved % (n_qubits_to_recieve // 10) == 0:
-                logging.info("BOB    : %d of %d recieved.", 
+            
+            if n_qubits_to_recieve < 10:
+                logging.info("BOB    : %d of %d sent.", 
+                             n_qubits_recieved, n_qubits_to_recieve)
+            elif n_qubits_recieved % (n_qubits_to_recieve // 10) == 0:
+                logging.info("BOB    : %d of %d sent.", 
                              n_qubits_recieved, n_qubits_to_recieve)
         
 ###############################################################################
