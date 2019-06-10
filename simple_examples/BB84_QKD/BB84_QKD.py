@@ -12,6 +12,7 @@ from threading import Thread
 FORMAT = "%(levelname)s: %(message)s"
 STATES = [["|0>", "|1>"], ["|+>", "|->"]]
 NETWORK_NAME = "BB84_QKD"
+ALICE_WAIT = 1#s
 
 ###############################################################################
 class ThreadManager:
@@ -20,7 +21,7 @@ class ThreadManager:
     corresponding results.
     """
 
-    def __init__(self, n_qubits, noisy):
+    def __init__(self, n_qubits, noisy, t1):
         """
         Create new ThreadManager for n qubit BB84. Create empty arrays for 
         storing bases and measurements, initialising to -1 as this is an 
@@ -40,6 +41,10 @@ class ThreadManager:
         self.orig_noise_state = simulaqron_settings.noisy_qubits
         simulaqron_settings.noisy_qubits = noisy
 
+        self.orig_t1_value = simulaqron_settings.t1
+        if t1 is not None:
+            simulaqron_settings.t1 = t1
+
         self.network = initNetwork()
 
     
@@ -55,7 +60,7 @@ class ThreadManager:
         self.alice_thread = Thread(target=alice, 
                                    args=(self.n_qubits, 
                                          self.alice_results,))
-        time.sleep(1)  # allow Alice to establish classical connection to Bob
+        time.sleep(ALICE_WAIT)  # Allow Alice time to establish connection 
         self.bob_thread   = Thread(target=bob  , 
                                    args=(self.n_qubits,
                                          self.bob_results,))
@@ -85,7 +90,7 @@ class ThreadManager:
         # tidy up SimulaQron backend
         self.network.stop()
         simulaqron_settings.noisy_qubits = self.orig_noise_state
-        #os.system("simulaqron set noisy-qubits n")
+        simulaqron_settings.t1 = self.orig_t1_value
 
         results = (self.alice_results, self.bob_results)
         return results
@@ -309,43 +314,94 @@ def estimateQBER(alice_key_sample, bob_key_sample):
 ###############################################################################
 
 ###############################################################################
+def process_args(args):
+    """
+    Process the parsed command line arguments.
+
+    Arguments:
+    args -- the parsed command line arguments
+
+    Returns:
+    processed_args -- a dictionary of processed command line arguments
+    """
+    processed_args = {}
+
+    processed_args['n_qubits']  = int(args.n_qubits)
+    processed_args['eavesdrop'] = args.eavesdrop
+    processed_args['noisy']     = args.noisy
+    processed_args['outfile']   = args.write
+    if args.test_prob is not None:
+        processed_args['test_prob'] = float(args.test_prob)
+    else:
+        processed_args['test_prob'] = args.test_prob
+    if args.coherence_time is not None:
+        processed_args['t1'] = float(args.coherence_time)
+    else:
+        processed_args['t1'] = args.coherence_time
+
+    return processed_args
+
+###############################################################################
+
+###############################################################################
+def printNicely(outfile, outvals):
+	if os.path.exists(outfile):
+		logging.info("FILE   : Appending to existing outfile")
+		with open(outfile, 'a') as f:
+			f.write(', '.join(outvals.values())+'\n')
+	else:
+		logging.info("FILE   : Creating new outfile")
+		with open(outfile, 'w+') as f:
+			f.write(','.join(outvals  .keys())+'\n')
+			f.write(','.join(outvals.values())+'\n')
+
+###############################################################################
+
+###############################################################################
 def main(args):
     logging.basicConfig(format=FORMAT, level=logging.INFO)
-
-    # process system args
-    n_qubits  = int(args.n_qubits)
-    eavesdrop = args.eavesdrop
-    noisy     = args.noisy
-    if args.test_prob is not None:
-        test_prob = float(args.test_prob)
-    else:
-        test_prob = args.test_prob
-
-    thread_manager = ThreadManager(n_qubits, noisy)
-    thread_manager.start(eavesdrop)
+    args = process_args(args)
+        
+    thread_manager = ThreadManager(args['n_qubits'], args['noisy'], args['t1'])
+    thread_manager.start(args['eavesdrop'])
     alice_res, bob_res = thread_manager.join()
 
-    alice_key, bob_key, qber = generateKey(alice_res, bob_res, test_prob)
+    alice_key, bob_key, qber = generateKey(alice_res, bob_res, 
+                                           args['test_prob'])
+
     logging.info("MAIN   : Alice's generated key: %s", alice_key)
     logging.info("MAIN   :   Bob's generated key: %s",   bob_key)
     logging.info("MAIN   : QBER estimate: %.3f", qber)
+
+    if args['outfile'] is not None:
+        outvals = {'noisy'    : str(args['noisy']), 
+        		   't1'       : str(args['t1']),
+        		   'eavesdrop': str(args['eavesdrop']),
+        		   'QBER'     : str(qber),
+        		   'key_len'  : str(len(alice_key))}
+        printNicely(args['outfile'], outvals)
 
 ###############################################################################
     
 ###############################################################################
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="n-qubit BB84 QKD simulation")
-    parser.add_argument("n_qubits",          default=None, 
+    parser.add_argument("n_qubits"        ,          default=None, 
                         help="Number of qubits to simulate in protocol")
     parser.add_argument("--eavesdrop", "-e", action="store_true", 
                         help=("If flagged, Eve will measure before re-sending " 
                               "each qubit she recieves"))
-    parser.add_argument("--noisy"    , "-n", action="store_true", 
+    parser.add_argument("--noisy"         , "-n", action="store_true", 
                         help=("If flagged, the SimulaQron setting for noisy " 
                               "qubits will be turned on"))
-    parser.add_argument("--test_prob", "-f", default=None, 
+    parser.add_argument("--coherence_time", "-t", default=None,
+                        help=("Set the SimulaQron coherence time, used in the "
+                              "case of noisy qubits (smaller = more noise"))
+    parser.add_argument("--test_prob"     , "-f", default=None, 
                         help=("Probability with which Alice and Bob consider "
                               "using each of their qubits to estimate QBER"))
+    parser.add_argument("--write"    , "-w", default=None,
+                        help="If set, write to QBER corresponding log file.")
     args = parser.parse_args()
     main(args)
 
