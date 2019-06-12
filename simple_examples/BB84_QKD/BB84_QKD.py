@@ -45,7 +45,7 @@ class ThreadManager:
         if t1 is not None:
             simulaqron_settings.t1 = t1
 
-        self.network = initNetwork()
+        self.network = init_network()
 
     
     def start(self, eavesdrop):
@@ -98,7 +98,7 @@ class ThreadManager:
 ###############################################################################
 
 ###############################################################################
-def initNetwork(name=NETWORK_NAME, nodes=["Alice","Bob","Eve"], topology=None):
+def init_network(name=NETWORK_NAME, nodes=["Alice","Bob","Eve"], topology=None):
     """
     Start fully connected (the default) simulaqron network.
 
@@ -256,7 +256,7 @@ def eve(n_qubits_to_recieve, eavesdrop=False):
 ###############################################################################
 
 ###############################################################################
-def generateKey(alice_results, bob_results, test_prob=None):
+def generate_key(alice_results, bob_results, test_prob=None):
     """
     Generate the key from the results of Alice and Bob; namely where their
     bases agree return the corresponding qubits/measurements.
@@ -279,18 +279,18 @@ def generateKey(alice_results, bob_results, test_prob=None):
     if test_prob is not None:
         test_idxs = binomial(1, test_prob, size=alice_key.shape).astype(bool)
         keep_idxs = np.logical_not(test_idxs)
-        qber = estimateQBER(alice_key[test_idxs], bob_key[test_idxs])
+        qber = estimate_qber(alice_key[test_idxs], bob_key[test_idxs])
         alice_key = alice_key[keep_idxs]
         bob_key   =   bob_key[keep_idxs]
     else:
-        qber = estimateQBER(alice_key, bob_key)
+        qber = estimate_qber(alice_key, bob_key)
 
     return (alice_key, bob_key, qber)
 
 ###############################################################################
 
 ###############################################################################
-def estimateQBER(alice_key_sample, bob_key_sample):
+def estimate_qber(alice_key_sample, bob_key_sample):
     """
     Given equal sized samples of the keys generated for Alice and Bob, estimate
     the QBER of the system.
@@ -344,7 +344,7 @@ def process_args(args):
 ###############################################################################
 
 ###############################################################################
-def printNicely(outfile, outvals):
+def print_nicely(outfile, outvals):
     if os.path.exists(outfile):
         logging.info("FILE   : Appending to existing outfile")
         with open(outfile, 'a') as f:
@@ -366,7 +366,7 @@ def main(args):
     thread_manager.start(args['eavesdrop'])
     alice_res, bob_res = thread_manager.join()
 
-    alice_key, bob_key, qber = generateKey(alice_res, bob_res, 
+    alice_key, bob_key, qber = generate_key(alice_res, bob_res, 
                                            args['test_prob'])
 
     logging.info("MAIN   : Alice's generated key: %s", alice_key)
@@ -379,7 +379,7 @@ def main(args):
                    'eavesdrop': str(args['eavesdrop']),
                    'QBER'     : str(qber),
                    'key_len'  : str(len(alice_key))}
-        printNicely(args['outfile'], outvals)
+        print_nicely(args['outfile'], outvals)
 
 ###############################################################################
     
