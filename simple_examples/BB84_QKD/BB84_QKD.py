@@ -14,7 +14,7 @@ STATES = [["|0>", "|1>"], ["|+>", "|->"]]
 NETWORK_NAME = "BB84_QKD"
 ALICE_WAIT = 1#s
 
-###############################################################################
+
 class ThreadManager:
     """
     Class to manage running of Alice, Bob and Eve's threads, and storing of the 
@@ -95,9 +95,7 @@ class ThreadManager:
         results = (self.alice_results, self.bob_results)
         return results
 
-###############################################################################
 
-###############################################################################
 def init_network(name=NETWORK_NAME, nodes=["Alice","Bob","Eve"], topology=None):
     """
     Start fully connected (the default) simulaqron network.
@@ -116,9 +114,7 @@ def init_network(name=NETWORK_NAME, nodes=["Alice","Bob","Eve"], topology=None):
 
     return network
 
-###############################################################################
 
-###############################################################################
 def alice(n_qubits_to_send, results):
     """
     Alice chooses n random pairs of bits (x, a), using the first to determine a
@@ -170,9 +166,7 @@ def alice(n_qubits_to_send, results):
                              n_qubits_sent, n_qubits_to_send)
             n_qubits_sent += 1
 
-###############################################################################
 
-###############################################################################
 def bob(n_qubits_to_recieve, results):
     """
     Bob chooses a random bit y to determine a measurement basis (computational 
@@ -213,9 +207,7 @@ def bob(n_qubits_to_recieve, results):
                 logging.info("BOB    : %d of %d sent.", 
                              n_qubits_recieved, n_qubits_to_recieve)
         
-###############################################################################
 
-###############################################################################
 def eve(n_qubits_to_recieve, eavesdrop=False):
     """
     Eve receives a qubit from Alice and passes it on to Bob. Eve can be set to 
@@ -253,9 +245,7 @@ def eve(n_qubits_to_recieve, eavesdrop=False):
             # send qubit to Bob
             Eve.sendQubit(q, "Bob")
 
-###############################################################################
 
-###############################################################################
 def generate_key(alice_results, bob_results, test_prob=None):
     """
     Generate the key from the results of Alice and Bob; namely where their
@@ -287,9 +277,7 @@ def generate_key(alice_results, bob_results, test_prob=None):
 
     return (alice_key, bob_key, qber)
 
-###############################################################################
 
-###############################################################################
 def estimate_qber(alice_key_sample, bob_key_sample):
     """
     Given equal sized samples of the keys generated for Alice and Bob, estimate
@@ -311,9 +299,7 @@ def estimate_qber(alice_key_sample, bob_key_sample):
     n_total = len(alice_key_sample)
     return n_in_agreement / n_total
 
-###############################################################################
 
-###############################################################################
 def process_args(args):
     """
     Process the parsed command line arguments.
@@ -341,9 +327,7 @@ def process_args(args):
 
     return processed_args
 
-###############################################################################
 
-###############################################################################
 def print_nicely(outfile, outvals):
     if os.path.exists(outfile):
         logging.info("FILE   : Appending to existing outfile")
@@ -355,9 +339,7 @@ def print_nicely(outfile, outvals):
             f.write(','.join(outvals  .keys())+'\n')
             f.write(','.join(outvals.values())+'\n')
 
-###############################################################################
 
-###############################################################################
 def main(args):
     logging.basicConfig(format=FORMAT, level=logging.INFO)
     args = process_args(args)
@@ -381,9 +363,7 @@ def main(args):
                    'key_len'  : str(len(alice_key))}
         print_nicely(args['outfile'], outvals)
 
-###############################################################################
-    
-###############################################################################
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="n-qubit BB84 QKD simulation")
     parser.add_argument("n_qubits"        ,          default=None, 
@@ -404,5 +384,3 @@ if __name__ == "__main__":
                         help="If set, write to QBER corresponding log file.")
     args = parser.parse_args()
     main(args)
-
-###############################################################################
