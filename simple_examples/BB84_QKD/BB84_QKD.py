@@ -196,7 +196,7 @@ def bob(n_qubits_to_recieve, results):
                 q.H() 
             b = q.measure()
 
-            # obtain classical message from Alice
+            # obtain classical message from Alice
             x = Bob.recvClassical()[0]
 
             # store for QBER estimation
@@ -345,15 +345,15 @@ def process_args(args):
 
 ###############################################################################
 def printNicely(outfile, outvals):
-	if os.path.exists(outfile):
-		logging.info("FILE   : Appending to existing outfile")
-		with open(outfile, 'a') as f:
-			f.write(', '.join(outvals.values())+'\n')
-	else:
-		logging.info("FILE   : Creating new outfile")
-		with open(outfile, 'w+') as f:
-			f.write(','.join(outvals  .keys())+'\n')
-			f.write(','.join(outvals.values())+'\n')
+    if os.path.exists(outfile):
+        logging.info("FILE   : Appending to existing outfile")
+        with open(outfile, 'a') as f:
+            f.write(', '.join(outvals.values())+'\n')
+    else:
+        logging.info("FILE   : Creating new outfile")
+        with open(outfile, 'w+') as f:
+            f.write(','.join(outvals  .keys())+'\n')
+            f.write(','.join(outvals.values())+'\n')
 
 ###############################################################################
 
@@ -375,10 +375,10 @@ def main(args):
 
     if args['outfile'] is not None:
         outvals = {'noisy'    : str(args['noisy']), 
-        		   't1'       : str(args['t1']),
-        		   'eavesdrop': str(args['eavesdrop']),
-        		   'QBER'     : str(qber),
-        		   'key_len'  : str(len(alice_key))}
+                   't1'       : str(args['t1']),
+                   'eavesdrop': str(args['eavesdrop']),
+                   'QBER'     : str(qber),
+                   'key_len'  : str(len(alice_key))}
         printNicely(args['outfile'], outvals)
 
 ###############################################################################
