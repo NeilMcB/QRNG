@@ -1,3 +1,4 @@
+
 import argparse
 from cqc.pythonLib import CQCConnection, CQCNoQubitError, qubit
 import logging
@@ -7,7 +8,7 @@ import os
 import time
 from simulaqron.network import Network
 from simulaqron.settings import simulaqron_settings
-from threading import Thread
+from threading import Thread, Event, Lock
 
 FORMAT = "%(levelname)s: %(message)s"
 STATES = [["|0>", "|1>"], ["|+>", "|->"]]
@@ -30,11 +31,19 @@ class ThreadManager:
 
         Arguments:
         n_qubits -- the number of qubits to be sent from Alice to Bob
+        noisy -- a boolean value indicating whether noisy qubits should be 
+        simulated
+        t1 - the simulated coherence time of the qubits
         """
         self.n_qubits = n_qubits
         
         self.alice_results = -1*np.ones((2, n_qubits))
-        self.bob_results   = -1*np.ones((3, n_qubits))
+        self.bob_results   = -1*np.ones((2, n_qubits))
+
+        # control qubit flow
+        self.sent_to_eve_event = Event()
+        self.sent_to_bob_event = Event()
+        self.sent_to_bob_event.set()
 
         logging.info("NETWORK: Turning noisy-qubits %s.", 
                     ["off","on"][noisy])
@@ -59,18 +68,22 @@ class ThreadManager:
 
         self.alice_thread = Thread(target=alice, 
                                    args=(self.n_qubits, 
-                                         self.alice_results,))
+                                         self.alice_results,
+                                         self.sent_to_eve_event,
+                                         self.sent_to_bob_event,))
         time.sleep(ALICE_WAIT)  # Allow Alice time to establish connection 
         self.bob_thread   = Thread(target=bob  , 
                                    args=(self.n_qubits,
                                          self.bob_results,))
         self.eve_thread   = Thread(target=eve  , 
                                    args=(self.n_qubits,
+                                         self.sent_to_eve_event,
+                                         self.sent_to_bob_event,
                                          eavesdrop,))
 
         self.alice_thread.start()
-        self.bob_thread  .start()
-        self.eve_thread  .start()
+        self.bob_thread.start()
+        self.eve_thread.start()
 
     
     def join(self):
@@ -83,8 +96,8 @@ class ThreadManager:
         qubits/measurements.
         """
         self.alice_thread.join()
-        self.bob_thread  .join()
-        self.eve_thread  .join()
+        self.bob_thread.join()
+        self.eve_thread.join()
         logging.info("TM     : Threads joined.")
 
         # tidy up SimulaQron backend
@@ -115,18 +128,18 @@ def init_network(name=NETWORK_NAME, nodes=["Alice","Bob","Eve"], topology=None):
     return network
 
 
-def alice(n_qubits_to_send, results):
+def alice(n_qubits_to_send, results, sent_to_eve_event, sent_to_bob_event):
     """
     Alice chooses n random pairs of bits (x, a), using the first to determine a
     measurement basis (computational or Hadamard) and the second to determine 
     the corresponding qubit orientation (|+> or |0>, |-> or |1> respectively).
-    She sends these qubits to Bob via Eve through an untrusted quantum channel,
-    and directly communicates her determined bases to Bob via a trusted
-    classical channel.
+    She sends these qubits to Bob via Eve through an untrusted quantum channel.
 
     Arguments:
     n_qubits_to_send -- the number of qubits to prepare and send to Bob
     results -- np.ndarray to store bases and qubits
+    sent_to_eve_event -- threading.Event to control flow of qubits
+    sent_to_bob_event -- threading.Event to control flow of qubits
     """
 
     # Connect to network
@@ -143,6 +156,7 @@ def alice(n_qubits_to_send, results):
             results[1,n_qubits_sent] = a  # qubit
 
             # try to make a qubit
+            sent_to_bob_event.wait()    
             try:
                 q = qubit(Alice)  # |0>
             except CQCNoQubitError:
@@ -154,7 +168,8 @@ def alice(n_qubits_to_send, results):
                 q.H()  # |+> or |->
 
             Alice.sendQubit(q, "Eve")
-            Alice.sendClassical("Bob", x)
+            sent_to_eve_event.set()
+            sent_to_bob_event.clear()
             
             logging.debug("ALICE  : state %s sent", STATES[x][a])
 
@@ -173,6 +188,11 @@ def bob(n_qubits_to_recieve, results):
     or Hadamard) and uses this to measure the Qubit sent by Alice. If his bit 
     matches the bit classically send by Alice, in the absence of any 
     eveasdropping, he and Alice will share the same secret(ish) bit.
+
+    Arguments:
+    n_qubits_to_recieve -- the number of qubits to receive from Alice
+    results -- np.ndarray to store bases and qubits
+    sent_to_bob_event -- threading.Event to control flow of qubits
     """
 
     # Connect to network
@@ -190,13 +210,9 @@ def bob(n_qubits_to_recieve, results):
                 q.H() 
             b = q.measure()
 
-            # obtain classical message from Alice
-            x = Bob.recvClassical()[0]
-
             # store for QBER estimation
             results[0,n_qubits_recieved] = y       # basis
             results[1,n_qubits_recieved] = b       # result
-            results[2,n_qubits_recieved] = (y==x)  # basis match
 
             logging.debug("BOB    : state %s measured", STATES[y][b])
             
@@ -208,7 +224,7 @@ def bob(n_qubits_to_recieve, results):
                              n_qubits_recieved, n_qubits_to_recieve)
         
 
-def eve(n_qubits_to_recieve, eavesdrop=False):
+def eve(n_qubits_to_recieve, sent_to_eve_event, sent_to_bob_event, eavesdrop=False):
     """
     Eve receives a qubit from Alice and passes it on to Bob. Eve can be set to 
     eavesdrop (i.e. measure at random then send her resulting state to Bob) or 
@@ -216,6 +232,8 @@ def eve(n_qubits_to_recieve, eavesdrop=False):
 
     Arguments:
     n_qubits_to_recieve -- the number of qubits Eve is to expect
+    sent_to_eve_event -- threading.Event to control flow of qubits
+    sent_to_bob_event -- threading.Event to control flow of qubits
     easvedrop -- whether or not Eve will look at each state she recieve
     """
 
@@ -225,6 +243,7 @@ def eve(n_qubits_to_recieve, eavesdrop=False):
 
         for _ in range(n_qubits_to_recieve):
             # recieve qubit from Alice
+            sent_to_eve_event.wait()
             q = Eve.recvQubit()
 
             if eavesdrop:
@@ -244,6 +263,8 @@ def eve(n_qubits_to_recieve, eavesdrop=False):
 
             # send qubit to Bob
             Eve.sendQubit(q, "Bob")
+            sent_to_eve_event.clear()
+            sent_to_bob_event.set()
 
 
 def generate_key(alice_results, bob_results, test_prob=None):
@@ -262,7 +283,7 @@ def generate_key(alice_results, bob_results, test_prob=None):
     key -- the key generated by the BB84 protocol
     qber -- the estimated QBER
     """
-    basis_match = bob_results[2].astype(bool)
+    basis_match = alice_results[0] == bob_results[0]
     alice_key = alice_results[1][basis_match].astype(int)
     bob_key   =   bob_results[1][basis_match].astype(int)
 
