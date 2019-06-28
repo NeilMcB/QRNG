@@ -1,4 +1,3 @@
-
 import argparse
 from cqc.pythonLib import CQCConnection, CQCNoQubitError, qubit
 import logging
@@ -8,7 +7,7 @@ import os
 import time
 from simulaqron.network import Network
 from simulaqron.settings import simulaqron_settings
-from threading import Thread, Event, Lock
+from threading import Thread, Event
 
 FORMAT = "%(levelname)s: %(message)s"
 STATES = [["|0>", "|1>"], ["|+>", "|->"]]

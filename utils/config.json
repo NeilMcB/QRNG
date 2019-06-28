@@ -1,0 +1,15 @@
+{
+	"defaults" : {
+		"network_params" : {
+			"name": null,
+			"nodes": null,
+			"topology": null,
+			"force": 1
+		},
+
+		"simQ_params" : {
+			"noisy_qubits": "n",
+			"t1": 1
+		}
+	}
+}

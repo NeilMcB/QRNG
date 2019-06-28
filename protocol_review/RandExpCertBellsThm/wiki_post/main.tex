@@ -1,0 +1,148 @@
+\documentclass[12pt,letterpaper]{article}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage{amsmath,amsthm,amsfonts,amssymb,amscd}
+\usepackage{bm}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{fullpage}
+\usepackage[top=2cm, bottom=4.5cm, left=1.5cm, right=1.5cm]{geometry}
+\usepackage{helvet}
+\usepackage{todonotes}
+\usepackage{color}
+
+\renewcommand{\familydefault}{\sfdefault}
+
+\setlist{nolistsep}
+
+\setlength{\parindent}{0.0in}
+\setlength{\parskip}{0.05in}
+
+\pagestyle{fancyplain}
+\headheight 35pt
+\lhead{}
+\chead{\textbf{\Large Random Numbers Certified by Bell's Theorem}}
+\rhead{}
+\lfoot{}
+\cfoot{}
+\rfoot{\small\thepage}
+\headsep 1.5em
+
+\begin{document}
+
+Random expansion is the process by which a short string (the seed), uniformly random and uncorrelated to any other party (private), is converted to a longer string which remains (close to) uniformly random and uncorrelated with any other party.
+
+By exploiting the \textcolor{blue}{non-locality} of quantum mechanics, the protocol of \textcolor{blue}{Pironio \emph{et. al.}~\cite{pironio2010random}} enables the expansion of an initially private random seed using untrusted (i.e. provided by an adversary) devices. The output extended string is certified to be random and private to a chosen degree of confidence.
+
+\rule{\textwidth}{2pt}
+\section*{Assumptions}
+\begin{itemize}[noitemsep]
+    \item Quantum theory is correct
+    \item Adversaries do not have access to a \textcolor{blue}{quantum memory}. 
+    \item Inputs to each measurement system are independent and uncorrelated with the systems
+    \item Measurement systems have no knowledge of future inputs
+\end{itemize}
+
+\rule{\textwidth}{2pt}
+\section*{Outline}
+
+In this protocol, Alice has access to two identical measurement systems provided by an untrusted party, capable of measuring in two bases and providing two outputs. She has access to a lab in which the systems can be completely separated (i.e. made unable to communicate) during the measurement process and a source of entangled qubits.
+
+She is free to choose the confidence to which she would like the privacy and randomness of her expanded string to be certified, and the (joint) probability distribution from which her measurement bases are to be drawn. 
+
+At each iteration of the protocol, Alice generates a binary pair using her chosen distribution and a subset of her seed (complement to this subset will be required later), and uses this pair to set the bases of the measuring systems independently. She then makes measurements with each system and notes the results. 
+
+Using the generated bases and corresponding results, Alice estimates the correlation of her measurement system and uses this to place a bound on the on the min-entropy of her result string (the concatenation of all the binary results obtained). 
+
+Using the compliment to the subset of the Alice's used in generating measurement bases, she then uses a \textcolor{blue}{(classical) randomness extractor} to generate a private, random string from the result string. 
+
+As Alice has kept her seed private throughout, she is free to concatenate this and the final generated random string to produce a new private, random string which will be longer than her seed so long as the bound on the \textcolor{blue}{min-entropy} obtained is positive.
+\newpage
+\rule{\textwidth}{2pt}
+\section*{Notation}
+\begin{itemize}[noitemsep]
+    \item $n$: number of measurement iterations
+    \item $x_i$: measurement basis for system A on iteration $i$
+    \item $y_i$: measurement basis for system B on iteration $i$
+    \item $a_i$: measurement result for system A on iteration $i$
+    \item $b_i$: measurement result for system B on iteration $i$
+    \item $r$: string of measurement result pairs $r=(a_1,b_1;\ldots;a_n,b_n)$
+    \item $\Bar{r}$: output string from classical randomness extraction of $r$
+    \item $s$: string of measurement basis pairs $s=(x_1,y_1;\ldots;x_n,y_n)$
+    \item $t$: initial private random seed
+    \item $u$: final randomness expanded string
+    \item $P(x,y)$: joint probability distribution from which $x_i$ and $y_i$ are drawn
+    \item $I$: expected correlation of measurement bases and results across measurement systems A and B
+    \item $I_q$: maximum correlation permissible by quantum theory
+    \item $\hat{I}$: experimental estimate of $I$
+    \item $N(a=b,xy)$: number iterations $i$ for which $a_i=b_i$ with measurement bases $x_i=x$ and $y_i=y$
+    \item $N(a\neq b,xy)$: defined analogously to $N(a=b,xy)$
+    \item $q$: minimum joint probability of $x$ and $y$
+    \item $H_\infty^\textrm{bound}$: lower bound on the min-entropy of the output measurement string $r$
+    \item $f(I)$: the lower bound on the expected correlation of measurement bases (per use) in the limit of large n (determined using semi-definite programming~\cite{pironio2010random})
+    \item $\epsilon$: term to account for finite statistics effects
+    \item $\alpha$: the chosen confidence with which the returned entropy lower bound is correct
+\end{itemize}
+
+\rule{\textwidth}{2pt}
+\section*{Requirements}
+\begin{itemize}[noitemsep]
+    \item Private, random seed.
+    \item Entangled qubit source.
+    \item Measurement systems separable during measurement phase, satisfied via:
+    \begin{itemize}[noitemsep]
+        \item Space-like separation - place devices far enough apart that the speed of light limits the communication of meaningful information.
+        \item Shielding - information is conveyed by influence of the four fundamental forces in physics, by removing any channels for each the systems can be considered separate. Gravity is so weak it can be neglected, the strong and weak forces operate over scales smaller than that of a nucleus so will have no inter-qubit influence, electromagnetic forces can be screened by conductors.
+    \end{itemize}
+\end{itemize}
+
+\rule{\textwidth}{2pt}
+\section*{Properties}
+
+\begin{itemize}[noitemsep]
+    \item Requires a single source of entangled qubits.
+    \item Requires two identical measurement systems.
+    \item Makes no assumptions about measurement system inner workings.
+    \item Provides certification of privacy up to a specified confidence level.
+    \item For sufficient $n$, a seed of length $O(\sqrt{n}\log{\sqrt{n}})$ can be expanded to length $O(n)$
+    \item \emph{performance to be added here}
+\end{itemize}
+
+\rule{\textwidth}{2pt}
+\section*{Pseudocode}
+
+\hspace*{\algorithmicindent} \textbf{Input}: $t$, $n$, $\delta$, $P(x,y)$ \\
+\hspace*{\algorithmicindent} \textbf{Output}: $u$, $H_{\infty}^{\textrm{bound}}$
+\begin{algorithmic}[1]
+\State split $t$ into $t=(t_1,t_2)$ where $|t_1|\geq2n$
+\State initialise arrays $r$, $s$ of size $n$
+\State initialise \textcolor{blue}{RNG} with seed $t_1$ and distribution $P(x,y)$ \algorithmiccomment{is this right..? Authors specify $P(x,y)$}
+\State $\hat{I}\leftarrow0$
+\For{$i\leftarrow1$ to $n$}
+    \State $x_i, y_i \sim P(x,y)$
+    \State $s[i]\leftarrow(x_i, y_i)$
+    \State $a_i\leftarrow$ measurement result from system A in basis $x_i$
+    \State $b_i\leftarrow$ measurement result from system B in basis $y_i$
+    \State $r[i]\leftarrow(a_i,b_i)$
+\EndFor
+\State $\hat{I}\leftarrow\sum_{x,y}(-1)^{xy}[N(a=b,xy)-N(a\neq b,xy)]/P(x,y)$
+\State $\epsilon\leftarrow\sqrt{-\frac{n}{2}\big(\frac{1}{q}-I_q\big)^2\lg{\alpha}}$
+\State $H_{\infty}^{\textrm{bound}}\leftarrow nf\big(\hat{I}-\epsilon\big)$
+\State $\Bar{r}\leftarrow\textrm{randomnessExtractor}(r, t_2)$
+\State $u\leftarrow(t,\Bar{r})$
+\end{algorithmic}
+
+\newpage
+\rule{\textwidth}{2pt}
+\section*{Further Information}
+
+\rule{\textwidth}{2pt}
+\section*{Implementation}
+
+\emph{Details of experimental implementation will go here.}
+
+
+\bibliographystyle{ieeetr}
+\bibliography{ref}
+\end{document}
+
