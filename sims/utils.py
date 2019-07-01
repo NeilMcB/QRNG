@@ -28,7 +28,7 @@ class ExperimentManager:
 			threads (list): List for storing all managed experiment threads.
 		"""
 		config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
-		with open("/Users/Neil/Documents/Uni/MSc/thesis/QRNG/utils/config.json", 'r') as cfg:
+		with open(config_path, 'r') as cfg:
 			self.config = json.load(cfg)
 		
 		self.params = self.config['defaults']
@@ -82,8 +82,12 @@ class ExperimentManager:
 
 		Wait for all threads to finish and clean up the SimulaQron backend
 		and network.
+
+		Return:
+			results (list): list of return values from each thread.
 		"""
 		logging.info("EM\t: Joining threads.")
+
 		for thread in self.threads:
 			thread.join()
 
