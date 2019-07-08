@@ -8,8 +8,7 @@
 		},
 
 		"simQ_params" : {
-			"noisy_qubits": "n",
-			"t1": 1,
+			"noisy_qubits": 0,
 			"backend": "stabilizer"
 		}
 	}

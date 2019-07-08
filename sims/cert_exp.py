@@ -1,102 +1,143 @@
-from threading import Event
+import argparse
+from cqc.pythonLib import CQCConnection, qubit
 import numpy as np
 from numpy.random import binomial
-import utils
-from cqc.pythonLib import CQCConnection, qubit
 import logging
+from threading import Barrier
+import utils
 
+""" Random number expansion certified by Bell's theorem.
 
-"""A simulatedion of randomness expansion certified by Bell's theorem.
+https://www.nature.com/articles/nature09008
 
+Using two untrusted devices (system_A and system_B), an initial private string
+can be exapanded to a longer string whose privacy is bounded. The bound is
+determined from an estimate of how much the systems violate the CHSH 
+inequality.
 
 TODO:
-    think about what entangled state they share? How does this change things?
-    moving logging setup into config file?
+    incorporate events to control qubit flow
+    incorporate reading seed from file
+    move network setup into config file?
+    move SimQ setup to command line for experiment control?
 """
-def system_A(N_QUBITS, A_RESULTS):
-    with CQCConnection("Alice") as Alice:
-        logging.info("ALICE  : Alice connceted.")
-        for i in range(N_QUBITS):
-            # Wait until Bob is ready for a new qubit
-            QUBIT_RECV_EVENT.wait()
-            QUBIT_RECV_EVENT.clear()
-            # Create and send entangled pair
-            q = Alice.createEPR("Bob")
-            QUBIT_SENT_EVENT.set()
-            # Measure 
-            x = binomial(1, 0.5)
-            #if x:
-            #    q.H()  # X basis (else Z basis)
-            a = q.measure()
-            # Store results
-            #logging.info("ALICE  : x=%s, a=%s", x, a)
-            A_RESULTS[0,i] = x
-            A_RESULTS[1,i] = a
-            A_RESULTS[2,i] = q.get_entInfo().id_AB
+def generator(network, node, n_runs, target_A, target_B, barrier):
+    """ Generate an EPR pair and share with measurement systems.
+    
+    Generate a maximally entangled EPR state and send it to the systems located
+    at the specified targets:
 
+    Args:
+        network (str): name of the network to connect to
+        node (str): name of the node to connect to
+        n_runs (int): number of EPR pairs to generate
+        target_A (str): name of the first target node
+        target_B (str): name of the second target node
+    """
+    with CQCConnection(node, network_name=network) as Generator:
+        logging.info("GEN\t: Generator connected to node %s.", node)
+        for _ in range(n_runs):
+            # Wait until all parties are ready for another qubit
+            barrier.wait()
+            # Share qubits with targets
+            q = Generator.createEPR(target_A)
+            Generator.sendQubit(q, target_B)
 
-def system_B(N_QUBITS, B_RESULTS):
-    with CQCConnection("Bob") as Bob:
-        logging.info("BOB    : Bob connceted.")
-        for i in range(N_QUBITS):
-            # Wait until Alice has sent new qubit
-            QUBIT_SENT_EVENT.wait()
-            QUBIT_SENT_EVENT.clear()
-            # Recieve entangled qubit
-            q = Bob.recvEPR()
-            QUBIT_RECV_EVENT.set()
-            # Measure
-            y = binomial(1, 0.5)
-            #if y:
-            #    q.rot_Y(96)  # 1/sqrt(2) (X - Z) basis
-            #else:
-            #    q.rot_Y(32)  # 1/sqrt(2) (X + Z) basis
-            b = q.measure()
-            # Store results
-            #logging.info("BOB    : y=%s, b=%s", y, b)
-            B_RESULTS[0,i] = y
-            B_RESULTS[1,i] = b
-            B_RESULTS[2,i] = q.get_entInfo().id_AB
+def measurement(network, node, seed, results, bases, recvEPR, barrier):
+    """ Recieve entangled qubit and perform random basis measurement.
 
-            if (i%100==0):
-            	logging.info("BOB     : Measured qubit %d", i)
+    Recieves one of the EPR qubits from the generator and performs one of two
+    specified basis measurements as decided by the next bit in the seed. Stores
+    each measurement result, basis and qubit EPR ID as it goes.
 
+    Args:
+        network (str): name of the network to connect to
+        node (str): name of the node to connect to
+        seed (iterable): list-type object containing a set of random bits to be
+            used as measurement bases
+        results (np.ndarray): array for storing measurement bases, results 
+            and qubit IDs
+        basis (tuple): pair of lists of rotations to apply to set up the 
+            required measurement bases
+        recv_EPR (bool): will this node be recieving an EPR pair?
+    """
+    with CQCConnection(node, network_name=network) as Meas:
+        logging.info("MEAS\t: Measurement connected to node %s.", node)
+        for i, x in enumerate(seed):
+            # Wait until all parties are ready for another qubit
+            barrier.wait()
+            # Get qubit from generator
+            if recvEPR:
+                q = Meas.recvEPR()
+            else:
+                q = Meas.recvQubit()
+            # Apply rotations
+            utils.change_basis(q, bases[x])
+            
+            results[i] = q.measure()
 
-def calculate_I(A_RESULTS, B_RESULTS, N_QUBITS):
-    I = 0
-    for i in range(N_QUBITS):
-        x, a, qid_a = A_RESULTS[:,i]
-        y, b, qid_b = B_RESULTS[:,i]
-        I += (-1)**(x*y) * ((int(a==b) - int(a!=b)) / 0.25)
-    return I/N_QUBITS
-
-QUBIT_SENT_EVENT = Event()
-QUBIT_RECV_EVENT = Event()
-QUBIT_SENT_EVENT.set()
-QUBIT_RECV_EVENT.set()
-
-FORMAT = "%(levelname)s: %(message)s"
-
-N_QUBITS = 1000
-
-if __name__ == "__main__":
-    logging.basicConfig(format=FORMAT, level=logging.INFO)
-    em = utils.ExperimentManager(usr_simQ_params={'backend': 'stabilizer'})
-
-    A_RESULTS = -1 * np.ones((3,N_QUBITS))
-    B_RESULTS = -1 * np.ones((3,N_QUBITS))
-
-    em.start({system_A: (N_QUBITS,A_RESULTS,),
-              system_B: (N_QUBITS,B_RESULTS,)
-              })
-
+def main(args):
+    logging.basicConfig(format=utils.LOG_FORMAT, level=utils.LOG_LEVEL)
+    # Define network parameters
+    network = {'name': 'cert_exp',
+               'nodes': ['Gen', 'SysA', 'SysB'],
+               'topology': {'Gen' : ['SysA', 'SysB'], 
+                            'SysA' : [], 
+                            'SysB' : []
+                            }
+               }
+    # Define required SimulaQron parameters
+    backend = {'backend': 'projectq',
+               'noisy_qubits': True,
+               't1': 0.01
+              }
+    # Process input seed
+    with open(args.seed_source, 'r') as f:
+        seed = np.array(list(f.read())).astype(int)
+    seed_A = seed[0:2*args.n_runs:2]
+    seed_B = seed[1:2*args.n_runs:2]
+    # Prepare bits'n'pieces
+    results_A = -1 * np.ones(args.n_runs)
+    results_B = -1 * np.ones(args.n_runs)
+    qubit_control_barrier = Barrier(len(network['nodes']))
+    # Run the experiment
+    em = utils.ExperimentManager(network, backend)
+    em.start([(generator, [network['name'], 
+                           network['nodes'][0], 
+                           args.n_runs,
+                           network['nodes'][1], 
+                           network['nodes'][2],
+                           qubit_control_barrier
+                           ]
+               ),
+               (measurement, [network['name'],
+                              network['nodes'][1],
+                              seed_A, results_A, 
+                              ('X','Z'), True,
+                              qubit_control_barrier]
+               ),
+               (measurement, [network['name'],
+                              network['nodes'][2],
+                              seed_B, results_B, 
+                              ('X+Z','X-Z'), False,
+                              qubit_control_barrier]
+               )
+             ])
     em.join()
 
-    print(A_RESULTS)
-    print(B_RESULTS)
+    print(utils.estimate_CHSH(seed_A, seed_B, results_A, results_B))
 
-    I = calculate_I(A_RESULTS, B_RESULTS, N_QUBITS)
-    print(I)
+    np.save('A_RESULTS', [seed_A, results_A])
+    np.save('B_RESULTS', [seed_B, results_B])
 
-    np.save("A_RESULTS.npy", A_RESULTS)
-    np.save("B_RESULTS.npy", B_RESULTS)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Random number expansion certified by Bell's theorem.")
+    parser.add_argument("n_runs", type=int,
+                        help="number of times to query measurement systems")
+    parser.add_argument("--seed_source", '-s', default="anu_seed.txt",
+                        help="source file for random seed")
+    args = parser.parse_args()
+    main(args)
+    
