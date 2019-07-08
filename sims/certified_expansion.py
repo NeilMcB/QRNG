@@ -1,7 +1,6 @@
 import argparse
 from cqc.pythonLib import CQCConnection, qubit
 import numpy as np
-from numpy.random import binomial
 import logging
 from threading import Barrier
 import utils
@@ -124,9 +123,7 @@ def main(args):
     em.join()
 
     print(utils.estimate_CHSH(seed_A, seed_B, results_A, results_B))
-
-    np.save('A_RESULTS', [seed_A, results_A])
-    np.save('B_RESULTS', [seed_B, results_B])
+    np.save(args.outpath, np.concatenate((results_A, results_B), axis=0))
 
 
 if __name__ == "__main__":
@@ -136,6 +133,8 @@ if __name__ == "__main__":
                         help="number of times to query measurement systems")
     parser.add_argument("--seed_source", '-s', default="anu_seed.txt",
                         help="source file for random seed")
+    parser.add_argument("--outpath", '-o', default="results",
+                        help="path for storing results")
     args = parser.parse_args()
     main(args)
     
