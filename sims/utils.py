@@ -1,10 +1,17 @@
 from cqc.pythonLib import qubit
 import json
 import logging
+import numpy as np
 import os
 from simulaqron.network import Network
 from simulaqron.settings import simulaqron_settings
 from threading import Thread
+
+""" Some helpful functions for running SimulaQron experiments
+
+TODO:
+    Describe neatly what U0 and U1 do
+"""
 
 # Some useful variables
 LOG_FORMAT = "%(levelname)s: %(message)s"
@@ -89,7 +96,7 @@ class ExperimentManager:
         and network.
 
         Return:
-            results (list): list of return values from each thread.
+            (list): list of return values from each thread.
         """
         logging.info("EM\t: Joining threads.")
 
@@ -149,7 +156,7 @@ def change_basis(qubit, basis):
     else:
         raise ValueError('Valid bases are Z, X, X+Z and X-Z.')
 
-def estimate_CHSH(bases_A, bases_B, results_A, results_B):
+def estimate_CHSH(bases_A, bases_B, results_A, results_B, px=0.5, py=0.5):
     """ Estimate the CHSH correlation function.
 
     Args:
@@ -164,3 +171,61 @@ def estimate_CHSH(bases_A, bases_B, results_A, results_B):
         b = results_B[i]
         I += (-1)**(x*y) * ((int(a==b) - int(a!=b)) / 0.25)
     return I/len(bases_A)
+
+def estimate_FPB(bases, results):
+    """ Estimate the four-partite Bell inequality violation.
+
+    Args:
+        bases (np.ndarray): array of bases used in each measurement.
+        results (np.ndarray): array of results obtained in each measurement.
+    """
+    U0 = ['[1 0 0 0]', '[0 1 0 0]', '[0 0 1 0]', '[0 0 0 1]']
+    U1 = ['[1 0 0 0]', '[0 1 0 0]', '[0 0 1 0]', '[0 0 0 1]']
+    B = 0
+    for i in range(bases.shape[1]):
+        u = str(bases[:,i])
+        x = str(results[:,i])
+        if u in U0:
+            if x in U1:
+                B += 1
+        elif u in U1:
+            if x in U0:
+                B += 1
+    return B/bases.shape[1]
+
+def carter_wegman_extractor(source, seed, k, epsilon):
+	""" A Carter-Wegman hashing based randomness extractor.
+
+	http://users.cms.caltech.edu/~vidick/teaching/120_qcrypto/LN_Week4.pdf
+
+	A (k, epsilon)-strong randmoness extractor based on Carter-Wegman hashing.
+	Note that as the extractor is strong, the seed can be appended to its
+	output without compromising the uniformity of the final string. The seed
+	must be two-times the length of the source.
+
+	In the finite field F_q where q=2^n, f_{a,b}(x)=ax+b, (a,b) in F_q^2. 
+
+	Args:
+		source (np.ndarray): string of bits from a source of known min-entropy.
+		seed (np.ndarray): string of bits from uniformly random source.
+		k (float): (lower bound on) the min-entropy of the source.
+		epsilon (float): distance from uniform randomness accepted.
+
+	Returns:
+		(np.ndarray): random string of reduced length epsilon-close to uniform
+			randomness.
+	"""
+	d = len(seed)
+	n = len(source)
+	m = (int) (k - 2*np.log2(1/epsilon))
+	if (d < 2*n):
+		raise ValueError("Seed must have length two times that of source.")
+	# apply hash function by "sampling" from family of functions using seed
+	a = seed[:n]
+	b = seed[n:2*n]
+	f = np.logical_xor(np.logical_and(a, source), b)
+	# discard bits to satisfy leftover hash lemma 
+	return f[:m]
+
+
+
